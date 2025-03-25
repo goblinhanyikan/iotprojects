@@ -1,0 +1,130 @@
+// bu kod ÇATIR ÇATIR YAPAY ZEKAYA YAPTIRILMIŞTIR.
+
+
+import board
+import digitalio
+import usb_hid
+from adafruit_hid.keyboard import Keyboard
+from adafruit_hid.keycode import Keycode
+import time
+import random
+
+# GPIO-to-Key Mapping (your predefined keys)
+button_map = {
+    "GP10": Keycode.ENTER,  # Start
+    "GP15": Keycode.LEFT_ARROW,
+    "GP14": Keycode.DOWN_ARROW,
+    "GP16": Keycode.RIGHT_ARROW,
+    "GP19": Keycode.UP_ARROW,
+    "GP0": Keycode.Z,
+    "GP1": Keycode.X,
+    "GP8": Keycode.C,
+    "GP9": Keycode.V,
+    "GP18": Keycode.A,
+    "GP3": Keycode.S,
+    "GP4": Keycode.D,
+    "GP12": Keycode.F,
+    "GP2": Keycode.Q,
+    "GP5": Keycode.E,
+    "GP7": Keycode.R,
+}
+
+# Define possible motions (Fighting Game Inputs)
+motions = {
+    "QCF": [Keycode.DOWN_ARROW, Keycode.RIGHT_ARROW],  # 236
+    "QCB": [Keycode.DOWN_ARROW, Keycode.LEFT_ARROW],     # 214
+}
+
+# Define attack keys
+attack_keys = [Keycode.Z, Keycode.S, Keycode.D]
+
+# Initialize the keyboard
+kbd = Keyboard(usb_hid.devices)
+
+# Setup GPIO pins
+pin_objects = {}
+for pin, key in button_map.items():
+    pin_obj = digitalio.DigitalInOut(getattr(board, pin))
+    pin_obj.direction = digitalio.Direction.INPUT
+    pin_obj.pull = digitalio.Pull.UP  # Pull-up means unpressed = HIGH
+    pin_objects[pin] = {"obj": pin_obj, "state": False}
+
+# Setup GP13 as the activation toggle
+gp13 = digitalio.DigitalInOut(board.GP13)
+gp13.direction = digitalio.Direction.INPUT
+gp13.pull = digitalio.Pull.UP  # Pull-up means unpressed = HIGH
+gp13_state = False  # Track GP13 state (ON/OFF trigger)
+
+# Setup LED (use GP25 if you want an onboard LED or pick any GPIO)
+led = digitalio.DigitalInOut(board.LED)
+led.direction = digitalio.Direction.OUTPUT
+led.value = False  # LED off by default
+
+# State for Sauce Mode (repeat)
+sauce_mode = False  # Default is off
+
+# Function to execute random fighting game inputs
+def random_fighting_input():
+    motion_name, motion_steps = random.choice(list(motions.items()))  # Pick a random motion
+    attack = random.choice(attack_keys)  # Pick a random attack button
+
+    #print(f"Executing {motion_name} + {chr(attack)}")
+
+    # Perform motion input with a delay between presses
+    for step in motion_steps:
+        kbd.press(step)
+        time.sleep(0.02)  # Small delay for input registration
+
+    # Release motion inputs one at a time with a small delay between them
+    for step in motion_steps:
+        kbd.release(step)
+        time.sleep(0.02)
+
+    time.sleep(0.01)  # Small delay before attack
+
+    # Press attack key
+    kbd.press(attack)
+    time.sleep(0.02)
+    kbd.release(attack)
+
+    #print(f"{motion_name} + {chr(attack)} executed!")
+
+# Main loop
+while True:
+    # Check GP13 for toggle (sauce mode on/off)
+    if not gp13.value and not gp13_state:  # GP13 pressed (toggle state)
+        gp13_state = True
+        sauce_mode = not sauce_mode  # Toggle sauce mode (on/off)
+        if sauce_mode:
+            print("Sauce Mode Activated!")
+            led.value = True  # Turn on the LED for Sauce Mode
+        else:
+            print("Sauce Mode Deactivated!")
+            led.value = False  # Turn off LED when Sauce Mode is off
+
+    if gp13.value and gp13_state:  # GP13 released (reset state)
+        gp13_state = False
+
+    # If Sauce Mode is on, execute random inputs repeatedly
+    if sauce_mode:
+        random_fighting_input()
+        time.sleep(random.uniform(0.2, 0.5))  # Random delay before next move
+
+    # Regular button press checking
+    for pin, data in pin_objects.items():
+        button = data["obj"]
+        keycode = button_map[pin]
+        was_pressed = data["state"]
+        is_pressed = not button.value  # Button is active when LOW
+
+        if is_pressed and not was_pressed:
+            print(f"{pin} -> Key {keycode}")
+            kbd.press(keycode)
+            data["state"] = True
+
+        if not is_pressed and was_pressed:
+            kbd.release(keycode)
+            data["state"] = False
+
+    time.sleep(0.01)  # Small delay to prevent CPU overload
+
